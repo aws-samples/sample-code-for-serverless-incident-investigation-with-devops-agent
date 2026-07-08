@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Processing Service — Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1419; color: #e1e8ed; min-height: 100vh; padding: 24px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .header h1 { font-size: 1.5rem; font-weight: 600; }
+        .status-badge { padding: 6px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
+        .status-healthy { background: #0d4228; color: #4ade80; border: 1px solid #166534; }
+        .status-degraded { background: #451a03; color: #fb923c; border: 1px solid #92400e; }
+        .status-down { background: #450a0a; color: #f87171; border: 1px solid #991b1b; }
+        .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+        .metric-card { background: #1a2332; border: 1px solid #2d3748; border-radius: 12px; padding: 20px; }
+        .metric-card .label { font-size: 0.75rem; color: #8899a6; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+        .metric-card .value { font-size: 1.8rem; font-weight: 700; }
+        .metric-card .value.green { color: #4ade80; }
+        .metric-card .value.red { color: #f87171; }
+        .metric-card .value.yellow { color: #fbbf24; }
+        .metric-card .value.blue { color: #60a5fa; }
+        .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .panel { background: #1a2332; border: 1px solid #2d3748; border-radius: 12px; padding: 20px; }
+        .panel h2 { font-size: 1rem; margin-bottom: 16px; color: #8899a6; }
+        .order-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #2d3748; }
+        .order-row:last-child { border-bottom: none; }
+        .order-id { font-family: monospace; color: #60a5fa; font-size: 0.85rem; }
+        .order-product { flex: 1; margin-left: 12px; }
+        .order-amount { font-weight: 600; color: #4ade80; }
+        .order-status { font-size: 0.75rem; padding: 3px 8px; border-radius: 4px; margin-left: 8px; }
+        .order-status.pending { background: #422006; color: #fbbf24; }
+        .order-status.confirmed { background: #0d4228; color: #4ade80; }
+        .order-status.shipped { background: #1e1b4b; color: #a78bfa; }
+        .order-status.delivered { background: #042f2e; color: #2dd4bf; }
+        .log-entry { font-family: monospace; font-size: 0.8rem; padding: 6px 0; border-bottom: 1px solid #2d3748; color: #8899a6; }
+        .log-entry.error { color: #f87171; }
+        .log-entry.success { color: #4ade80; }
+        .log-entry .timestamp { color: #4a5568; margin-right: 8px; }
+        .actions { margin-top: 24px; display: flex; gap: 12px; }
+        .btn { padding: 10px 20px; border-radius: 8px; border: none; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .btn-primary { background: #2563eb; color: white; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-danger { background: #dc2626; color: white; }
+        .btn-danger:hover { background: #b91c1c; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .config { margin-top: 16px; padding: 16px; background: #1a2332; border: 1px solid #2d3748; border-radius: 12px; }
+        .config label { font-size: 0.85rem; color: #8899a6; }
+        .config input { background: #0f1419; border: 1px solid #2d3748; color: #e1e8ed; padding: 8px 12px; border-radius: 6px; width: 100%; margin-top: 4px; font-family: monospace; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🛒 Order Processing Service</h1>
+        <div>
+            <span id="statusBadge" class="status-badge status-healthy">● HEALTHY</span>
+        </div>
+    </div>
+
+    <div class="metrics">
+        <div class="metric-card">
+            <div class="label">Total Orders</div>
+            <div class="value blue" id="totalOrders">—</div>
+        </div>
+        <div class="metric-card">
+            <div class="label">Successful Requests</div>
+            <div class="value green" id="successCount">0</div>
+        </div>
+        <div class="metric-card">
+            <div class="label">Failed Requests</div>
+            <div class="value red" id="errorCount">0</div>
+        </div>
+        <div class="metric-card">
+            <div class="label">Avg Latency</div>
+            <div class="value yellow" id="avgLatency">—</div>
+        </div>
+    </div>
+
+    <div class="panels">
+        <div class="panel">
+            <h2>Recent Orders</h2>
+            <div id="ordersList">Loading...</div>
+        </div>
+        <div class="panel">
+            <h2>Activity Log</h2>
+            <div id="activityLog"></div>
+        </div>
+    </div>
+
+    <div class="actions">
+        <button class="btn btn-primary" onclick="placeOrder()">Place New Order</button>
+        <button class="btn btn-danger" onclick="burstTest()">Burst Test (10 concurrent)</button>
+        <button class="btn btn-primary" onclick="refreshOrders()">Refresh</button>
+    </div>
+
+    <div class="config">
+        <label>API Endpoint</label>
+        <input type="text" id="apiUrl" value="https://rut1bpvz79.execute-api.us-east-1.amazonaws.com" />
+    </div>
+
+    <script>
+        let successCount = 0;
+        let errorCount = 0;
+        let latencies = [];
+        let logs = [];
+
+        function getApiUrl() {
+            return document.getElementById('apiUrl').value.replace(/\/$/, '');
+        }
+
+        function addLog(message, type = 'info') {
+            const now = new Date().toLocaleTimeString();
+            logs.unshift({ time: now, message, type });
+            if (logs.length > 15) logs.pop();
+            renderLogs();
+        }
+
+        function renderLogs() {
+            const el = document.getElementById('activityLog');
+            el.innerHTML = logs.map(l =>
+                `<div class="log-entry ${l.type}"><span class="timestamp">${l.time}</span>${l.message}</div>`
+            ).join('');
+        }
+
+        function updateStatus() {
+            const badge = document.getElementById('statusBadge');
+            const errorRate = (successCount + errorCount) > 0 ? errorCount / (successCount + errorCount) : 0;
+
+            if (errorRate > 0.5) {
+                badge.className = 'status-badge status-down';
+                badge.textContent = '● SERVICE DOWN';
+            } else if (errorRate > 0.1) {
+                badge.className = 'status-badge status-degraded';
+                badge.textContent = '● DEGRADED';
+            } else {
+                badge.className = 'status-badge status-healthy';
+                badge.textContent = '● HEALTHY';
+            }
+
+            document.getElementById('successCount').textContent = successCount;
+            document.getElementById('errorCount').textContent = errorCount;
+
+            if (latencies.length > 0) {
+                const avg = Math.round(latencies.slice(-20).reduce((a, b) => a + b, 0) / Math.min(latencies.length, 20));
+                document.getElementById('avgLatency').textContent = avg + 'ms';
+            }
+        }
+
+        async function refreshOrders() {
+            const url = getApiUrl();
+            const start = Date.now();
+            try {
+                const resp = await fetch(`${url}/orders`);
+                const elapsed = Date.now() - start;
+                latencies.push(elapsed);
+
+                if (resp.ok) {
+                    const orders = await resp.json();
+                    successCount++;
+                    document.getElementById('totalOrders').textContent = orders.length;
+                    renderOrders(orders);
+                    addLog(`GET /orders → 200 (${elapsed}ms, ${orders.length} orders)`, 'success');
+                } else {
+                    errorCount++;
+                    addLog(`GET /orders → ${resp.status} (${elapsed}ms)`, 'error');
+                }
+            } catch (e) {
+                errorCount++;
+                addLog(`GET /orders → FAILED: ${e.message}`, 'error');
+            }
+            updateStatus();
+        }
+
+        function renderOrders(orders) {
+            const el = document.getElementById('ordersList');
+            if (orders.length === 0) {
+                el.innerHTML = '<div style="color:#4a5568">No orders found</div>';
+                return;
+            }
+            el.innerHTML = orders.slice(0, 8).map(o => `
+                <div class="order-row">
+                    <span class="order-id">${o.order_id}</span>
+                    <span class="order-product">${o.product_name}</span>
+                    <span class="order-amount">$${o.total_amount.toFixed(2)}</span>
+                    <span class="order-status ${o.status}">${o.status}</span>
+                </div>
+            `).join('');
+        }
+
+        const PRODUCTS = [
+            { name: "Wireless Headphones", price: 49.99 },
+            { name: "USB-C Hub", price: 34.99 },
+            { name: "Mechanical Keyboard", price: 129.00 },
+            { name: "Monitor Stand", price: 59.99 },
+            { name: "Laptop Sleeve", price: 24.99 },
+            { name: "Webcam HD", price: 79.99 },
+            { name: "Desk Lamp", price: 39.99 },
+            { name: "Mouse Pad XL", price: 19.99 },
+        ];
+
+        async function placeOrder() {
+            const url = getApiUrl();
+            const product = PRODUCTS[Math.floor(Math.random() * PRODUCTS.length)];
+            const qty = Math.floor(Math.random() * 3) + 1;
+            const payload = {
+                customer_id: `cust-${String(Math.floor(Math.random() * 100)).padStart(3, '0')}`,
+                product_name: product.name,
+                quantity: qty,
+                unit_price: product.price,
+                shipping_address: "456 Commerce St, Austin TX"
+            };
+
+            const start = Date.now();
+            try {
+                const resp = await fetch(`${url}/orders`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const elapsed = Date.now() - start;
+                latencies.push(elapsed);
+
+                if (resp.ok) {
+                    const order = await resp.json();
+                    successCount++;
+                    addLog(`POST /orders → 201 (${elapsed}ms) ${order.order_id} ${product.name} x${qty}`, 'success');
+                    refreshOrders();
+                } else {
+                    errorCount++;
+                    const body = await resp.text();
+                    addLog(`POST /orders → ${resp.status} (${elapsed}ms) ${body.substring(0, 80)}`, 'error');
+                }
+            } catch (e) {
+                errorCount++;
+                addLog(`POST /orders → FAILED: ${e.message}`, 'error');
+            }
+            updateStatus();
+        }
+
+        // Auto-refresh every 5 seconds
+        refreshOrders();
+        setInterval(refreshOrders, 5000);
+
+        async function burstTest() {
+            addLog('Sending 10 concurrent requests...', 'info');
+            const url = getApiUrl();
+            const promises = [];
+            for (let i = 0; i < 10; i++) {
+                const product = PRODUCTS[Math.floor(Math.random() * PRODUCTS.length)];
+                const payload = {
+                    customer_id: `burst-${i}`,
+                    product_name: product.name,
+                    quantity: 1,
+                    unit_price: product.price,
+                    shipping_address: "789 Burst Test Blvd"
+                };
+                const start = Date.now();
+                promises.push(
+                    fetch(`${url}/orders`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    }).then(async resp => {
+                        const elapsed = Date.now() - start;
+                        latencies.push(elapsed);
+                        if (resp.ok) {
+                            successCount++;
+                            addLog(`BURST POST /orders → ${resp.status} (${elapsed}ms) ✓`, 'success');
+                        } else {
+                            errorCount++;
+                            const body = await resp.text();
+                            addLog(`BURST POST /orders → ${resp.status} (${elapsed}ms) ${body.substring(0, 60)}`, 'error');
+                        }
+                    }).catch(e => {
+                        errorCount++;
+                        addLog(`BURST POST /orders → FAILED: ${e.message}`, 'error');
+                    })
+                );
+            }
+            await Promise.all(promises);
+            updateStatus();
+            refreshOrders();
+        }
+    </script>
+</body>
+</html>

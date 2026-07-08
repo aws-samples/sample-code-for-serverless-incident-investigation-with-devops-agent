@@ -1,0 +1,37 @@
+graph TB
+    subgraph "Presenter Workstation"
+        CLI[CLI Scripts<br/>setup / reset / inject]
+        KIRO[Kiro IDE + DevOps Agent]
+    end
+
+    subgraph "AWS Cloud"
+        ALB[ALB<br/>order-processing-alb]
+        ECS[ECS Fargate<br/>order-processing-service]
+        DDB[DynamoDB<br/>order-records]
+        CWL[CloudWatch Logs<br/>/ecs/order-processing-service]
+        CWM[CloudWatch Metrics<br/>ErrorRate + Latency]
+        CWA[CloudWatch Alarms]
+        SNS[SNS Topic<br/>platform-alerts-notifications]
+        ECR[ECR<br/>order-processing-service]
+    end
+
+    subgraph "Incident Response Flow"
+        WH[Webhook Alert<br/>Business-level]
+        RB[Runbook<br/>Service-to-Resource Mapping]
+    end
+
+    CLI -->|deploy/inject/reset| ECS
+    ALB --> ECS
+    ECS --> DDB
+    ECS --> CWL
+    ECS --> CWM
+    CWM --> CWA
+    CWA --> SNS
+    SNS --> WH
+    WH -->|business alert| KIRO
+    KIRO -->|consults| RB
+    RB -->|maps to resources| KIRO
+    KIRO -->|investigates| CWL
+    KIRO -->|investigates| CWM
+    KIRO -->|examines| ECS
+    ECR --> ECS

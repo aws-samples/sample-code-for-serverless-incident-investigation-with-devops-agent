@@ -1,0 +1,11 @@
+{
+  "event": "incident.triggered",
+  "incident": {
+    "id": "INC-20240115-001",
+    "title": "Order processing service is failing",
+    "severity": "critical",
+    "service": "order-processing-service",
+    "description": "Elevated error rate detected on order processing service. Customer-facing order submissions are failing.",
+    "triggered_at": "2024-01-15T14:30:00Z"
+  }
+}

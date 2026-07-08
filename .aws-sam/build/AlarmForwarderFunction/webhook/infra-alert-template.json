@@ -1,0 +1,11 @@
+{
+  "event": "incident.triggered",
+  "incident": {
+    "id": "INC-20240115-002",
+    "title": "Order processing service experiencing high latency",
+    "severity": "high",
+    "service": "order-processing-service",
+    "description": "P99 latency on order processing service has exceeded 5 seconds. Customers are experiencing slow page loads and timeouts.",
+    "triggered_at": "2024-01-15T15:45:00Z"
+  }
+}

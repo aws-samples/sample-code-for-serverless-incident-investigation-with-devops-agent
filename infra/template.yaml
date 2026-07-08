@@ -1,0 +1,281 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Order Processing Service - DevOps Agent Demo Infrastructure
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC to deploy into
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets for ECS tasks and ALB
+  ImageTag:
+    Type: String
+    Default: v1.2.0
+    Description: Docker image tag to deploy
+  ConnectionPoolSize:
+    Type: Number
+    Default: 10
+    Description: Application connection pool size
+
+Resources:
+  # ECR Repository
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: order-processing-service
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+  # DynamoDB Table
+  OrderRecordsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: order-records
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: order_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: order_id
+          KeyType: HASH
+      Tags:
+        - Key: auto-delete
+          Value: "no"
+
+  # CloudWatch Log Group
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/order-processing-service
+      RetentionInDays: 7
+
+  # ECS Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: platform-services-cluster
+
+  # Task Execution Role (ECR pull + CW Logs write)
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: order-processing-execution-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  # Task Role (DynamoDB + CloudWatch access)
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: order-processing-task-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: order-processing-task-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                Resource: !GetAtt OrderRecordsTable.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt LogGroup.Arn
+
+  # Security Group
+  ServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: order-processing-sg
+      GroupDescription: Security group for order processing service
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: order-processing-alb-sg
+      GroupDescription: Security group for order processing ALB
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        # Public-facing ALB pattern: open to internet on port 80.
+        # For production, add HTTPS listener with ACM certificate and HTTP-to-HTTPS redirect.
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  # Application Load Balancer
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: order-processing-alb
+      Scheme: internet-facing
+      Type: application
+      Subnets: !Ref SubnetIds
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: order-processing-tg
+      Port: 8000
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+      TargetType: ip
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 15
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+      # NOTE: This demo uses HTTP for simplicity. No real customer data is transmitted.
+      # For production, configure HTTPS with an ACM certificate and add HTTP-to-HTTPS redirect.
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  # ECS Task Definition
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: order-processing-task
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: order-processing-container
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/order-processing-service:${ImageTag}'
+          PortMappings:
+            - ContainerPort: 8000
+          Environment:
+            - Name: DYNAMODB_TABLE_NAME
+              Value: order-records
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: CONNECTION_POOL_SIZE
+              Value: !Sub '${ConnectionPoolSize}'
+            - Name: SERVICE_NAME
+              Value: order-processing-service
+            - Name: LOG_LEVEL
+              Value: INFO
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/order-processing-service
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  # ECS Service
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: ALBListener
+    Properties:
+      ServiceName: order-processing-service
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets: !Ref SubnetIds
+          SecurityGroups:
+            - !Ref ServiceSecurityGroup
+      LoadBalancers:
+        - ContainerName: order-processing-container
+          ContainerPort: 8000
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  # SNS Topic for alerts
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: platform-alerts-notifications
+      KmsMasterKeyId: alias/aws/sns
+
+  # CloudWatch Alarms
+  ErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: order-processing-error-rate-high
+      AlarmDescription: Triggers when 5xx error rate exceeds 5 percent
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions:
+        - Name: TargetGroup
+          Value: !GetAtt ALBTargetGroup.TargetGroupFullName
+        - Name: LoadBalancer
+          Value: !GetAtt ALB.LoadBalancerFullName
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertsTopic
+
+  LatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: order-processing-latency-p99-high
+      AlarmDescription: Triggers when p99 latency exceeds 5 seconds
+      Namespace: AWS/ApplicationELB
+      MetricName: TargetResponseTime
+      Dimensions:
+        - Name: TargetGroup
+          Value: !GetAtt ALBTargetGroup.TargetGroupFullName
+        - Name: LoadBalancer
+          Value: !GetAtt ALB.LoadBalancerFullName
+      ExtendedStatistic: p99
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertsTopic
+
+Outputs:
+  ALBUrl:
+    Value: !Sub 'http://${ALB.DNSName}'
+    Description: Public URL for the order processing service
+  ECSClusterName:
+    Value: !Ref ECSCluster
+  ECSServiceName:
+    Value: !GetAtt ECSService.Name
+  ECRRepositoryUri:
+    Value: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/order-processing-service'
+  DynamoDBTableName:
+    Value: !Ref OrderRecordsTable

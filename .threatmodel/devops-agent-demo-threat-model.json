@@ -1,0 +1,220 @@
+{
+  "schema": 1,
+  "applicationInfo": {
+    "name": "Threat Model Export",
+    "description": "Sample application demonstrating AWS DevOps Agent investigating live AWS infrastructure incidents. Deploys a serverless order processing service (API Gateway + Lambda + DynamoDB) with fault injection scripts for 4 demo scenarios (throttling, cascading failure, code bug, infrastructure misconfiguration). CloudWatch alarms trigger SNS notifications forwarded via webhook to DevOps Agent Event Channels for autonomous investigation. The code is intended for public publication on aws-samples GitHub as educational/demonstration material."
+  },
+  "architecture": {
+    "description": ""
+  },
+  "dataflow": {
+    "description": ""
+  },
+  "assumptions": [
+    {
+      "id": "A001",
+      "numericId": 1,
+      "content": "This is sample/demo code not intended for production use",
+      "displayOrder": 1,
+      "metadata": []
+    },
+    {
+      "id": "A002",
+      "numericId": 2,
+      "content": "No real customer PII or payment data is processed",
+      "displayOrder": 2,
+      "metadata": []
+    },
+    {
+      "id": "A003",
+      "numericId": 3,
+      "content": "The webhook secret and API endpoint are user-configured placeholders",
+      "displayOrder": 3,
+      "metadata": []
+    },
+    {
+      "id": "A004",
+      "numericId": 4,
+      "content": "Fault injection scripts are intentionally insecure by design",
+      "displayOrder": 4,
+      "metadata": []
+    }
+  ],
+  "mitigations": [
+    {
+      "id": "b9ddab24-bc82-43a8-80a5-4eeecc411c0c",
+      "numericId": 1,
+      "status": "mitigationIdentified",
+      "content": "API Gateway throttling and rate limiting configured via usage plans",
+      "displayOrder": 1,
+      "metadata": []
+    },
+    {
+      "id": "a7c897e0-c699-4f95-b58f-e87e57ec59df",
+      "numericId": 2,
+      "status": "mitigationIdentified",
+      "content": "Webhook secret stored as Lambda environment variable (user-configured)",
+      "displayOrder": 2,
+      "metadata": []
+    },
+    {
+      "id": "323cb83d-2142-4d0e-9da4-69bea150386c",
+      "numericId": 3,
+      "status": "mitigationIdentified",
+      "content": "CORS configuration (wildcard for demo purposes; should be restricted in production)",
+      "displayOrder": 3,
+      "metadata": []
+    },
+    {
+      "id": "f1823cf9-3921-48c5-8b64-1af489cd50a7",
+      "numericId": 4,
+      "status": "mitigationIdentified",
+      "content": "Input validation via Pydantic models for order creation requests",
+      "displayOrder": 4,
+      "metadata": []
+    },
+    {
+      "id": "761bd5b3-d154-4ebd-96f9-a48e471d90f0",
+      "numericId": 5,
+      "status": "mitigationIdentified",
+      "content": "IAM least-privilege roles for Lambda execution (scoped to specific DynamoDB tables)",
+      "displayOrder": 5,
+      "metadata": []
+    },
+    {
+      "id": "d3fdeb9c-4d1b-409a-a023-882f1e0a545f",
+      "numericId": 6,
+      "status": "mitigationIdentified",
+      "content": "DynamoDB encryption at rest enabled by default",
+      "displayOrder": 6,
+      "metadata": []
+    },
+    {
+      "id": "ba9c2efd-31a3-4fe8-b3ca-b2412e07506a",
+      "numericId": 7,
+      "status": "mitigationIdentified",
+      "content": "CORS configuration should be restricted to specific origins in production use",
+      "displayOrder": 7,
+      "metadata": []
+    }
+  ],
+  "assumptionLinks": [],
+  "mitigationLinks": [
+    {
+      "linkedId": "794a7978-85b8-4d49-9ccf-a133a0464881",
+      "mitigationId": "b9ddab24-bc82-43a8-80a5-4eeecc411c0c"
+    },
+    {
+      "linkedId": "96688f34-662c-4047-9197-773eebd49167",
+      "mitigationId": "a7c897e0-c699-4f95-b58f-e87e57ec59df"
+    },
+    {
+      "linkedId": "c4cbed73-adb2-42ef-b3e9-8f257e3fc0f0",
+      "mitigationId": "f1823cf9-3921-48c5-8b64-1af489cd50a7"
+    },
+    {
+      "linkedId": "5009b756-165e-4759-9d9b-bb0c6b81168e",
+      "mitigationId": "761bd5b3-d154-4ebd-96f9-a48e471d90f0"
+    },
+    {
+      "linkedId": "2dbda0ec-2344-4838-b2cd-6f7fd8ea19b7",
+      "mitigationId": "d3fdeb9c-4d1b-409a-a023-882f1e0a545f"
+    },
+    {
+      "linkedId": "f9901d7d-5ce0-4310-bfa6-2ba25c73d40f",
+      "mitigationId": "ba9c2efd-31a3-4fe8-b3ca-b2412e07506a"
+    }
+  ],
+  "threats": [
+    {
+      "id": "794a7978-85b8-4d49-9ccf-a133a0464881",
+      "numericId": 1,
+      "threatSource": "External attacker",
+      "prerequisites": "with network access to the public API endpoint",
+      "threatAction": "flood the API with requests causing throttling",
+      "threatImpact": "service unavailability for legitimate demo users",
+      "impactedGoal": [],
+      "impactedAssets": [],
+      "statement": "A External attacker with network access to the public API endpoint can flood the API with requests causing throttling, which leads to service unavailability for legitimate demo users",
+      "displayOrder": 1,
+      "status": "threatIdentified",
+      "tags": [],
+      "metadata": []
+    },
+    {
+      "id": "96688f34-662c-4047-9197-773eebd49167",
+      "numericId": 2,
+      "threatSource": "Malicious insider",
+      "prerequisites": "with access to Lambda environment variables",
+      "threatAction": "extract webhook secret from Lambda configuration",
+      "threatImpact": "ability to send fake alerts to DevOps Agent",
+      "impactedGoal": [],
+      "impactedAssets": [],
+      "statement": "A Malicious insider with access to Lambda environment variables can extract webhook secret from Lambda configuration, which leads to ability to send fake alerts to DevOps Agent",
+      "displayOrder": 2,
+      "status": "threatIdentified",
+      "tags": [],
+      "metadata": []
+    },
+    {
+      "id": "c4cbed73-adb2-42ef-b3e9-8f257e3fc0f0",
+      "numericId": 3,
+      "threatSource": "External attacker",
+      "prerequisites": "with network access",
+      "threatAction": "send crafted orders with invalid data to API",
+      "threatImpact": "corrupt demo data in DynamoDB tables",
+      "impactedGoal": [],
+      "impactedAssets": [],
+      "statement": "A External attacker with network access can send crafted orders with invalid data to API, which leads to corrupt demo data in DynamoDB tables",
+      "displayOrder": 3,
+      "status": "threatIdentified",
+      "tags": [],
+      "metadata": []
+    },
+    {
+      "id": "5009b756-165e-4759-9d9b-bb0c6b81168e",
+      "numericId": 4,
+      "threatSource": "Malicious insider",
+      "prerequisites": "with Lambda deployment permissions",
+      "threatAction": "modify Lambda code to inject malicious logic",
+      "threatImpact": "compromised application behavior and data integrity",
+      "impactedGoal": [],
+      "impactedAssets": [],
+      "statement": "A Malicious insider with Lambda deployment permissions can modify Lambda code to inject malicious logic, which leads to compromised application behavior and data integrity",
+      "displayOrder": 4,
+      "status": "threatIdentified",
+      "tags": [],
+      "metadata": []
+    },
+    {
+      "id": "2dbda0ec-2344-4838-b2cd-6f7fd8ea19b7",
+      "numericId": 5,
+      "threatSource": "Unauthorized user",
+      "prerequisites": "with AWS console or API access",
+      "threatAction": "read demo order data from DynamoDB tables",
+      "threatImpact": "exposure of synthetic test data (no real PII)",
+      "impactedGoal": [],
+      "impactedAssets": [],
+      "statement": "A Unauthorized user with AWS console or API access can read demo order data from DynamoDB tables, which leads to exposure of synthetic test data (no real PII)",
+      "displayOrder": 5,
+      "status": "threatIdentified",
+      "tags": [],
+      "metadata": []
+    },
+    {
+      "id": "f9901d7d-5ce0-4310-bfa6-2ba25c73d40f",
+      "numericId": 6,
+      "threatSource": "External attacker",
+      "prerequisites": "with network access to API",
+      "threatAction": "exploit wildcard CORS to perform cross-origin attacks",
+      "threatImpact": "unauthorized API access from malicious web pages",
+      "impactedGoal": [],
+      "impactedAssets": [],
+      "statement": "A External attacker with network access to API can exploit wildcard CORS to perform cross-origin attacks, which leads to unauthorized API access from malicious web pages",
+      "displayOrder": 6,
+      "status": "threatIdentified",
+      "tags": [],
+      "metadata": []
+    }
+  ]
+}
