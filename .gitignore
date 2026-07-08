@@ -33,3 +33,7 @@ Thumbs.db
 
 # Node (if using dashboard tooling)
 node_modules/
+.aws-sam/
+__pycache__/
+*.zip
+*.pyc
