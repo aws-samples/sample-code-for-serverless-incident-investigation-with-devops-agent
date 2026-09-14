@@ -32,7 +32,11 @@ def validate_template(template_path: str) -> list[str]:
         CFNLoader.add_constructor(tag, lambda loader, node: loader.construct_scalar(node) if isinstance(node, yaml.ScalarNode) else loader.construct_sequence(node))
 
     with open(template_path) as f:
-        template = yaml.load(f, Loader=CFNLoader)
+        # CFNLoader subclasses yaml.SafeLoader (it only adds constructors for
+        # CloudFormation intrinsic tags such as !Sub/!Ref), so this load is safe
+        # and cannot execute arbitrary objects. bandit B506 flags any yaml.load
+        # call regardless of the loader, so it is suppressed here with justification.
+        template = yaml.load(f, Loader=CFNLoader)  # nosec B506
 
     violations = []
     resources = template.get("Resources", {})
